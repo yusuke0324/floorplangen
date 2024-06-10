@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    volumes:
+      - .:/work
+    ports:
+      - "8888:8888"
+      - "5678:5678" # デバッグ用
+    # command: jupyter lab --ip=0.0.0.0 --allow-root --NotebookApp.token='' --NotebookApp.notebook_dir='/work'
+    # environment:
+      # - JUPYTER_ENABLE_LAB=yes
+    working_dir: /work

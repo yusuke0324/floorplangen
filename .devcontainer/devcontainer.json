@@ -1,0 +1,15 @@
+{
+    "name": "My Python Project",
+    "dockerComposeFile": "../docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/work",
+    "customizations": {
+      "vscode": {
+        "settings": {
+          "terminal.integrated.defaultProfile.linux": "/bin/bash"
+        },
+        "extensions": ["ms-python.python"],
+        "postCreateCommand": "jupyter lab --allow-root --ip='0.0.0.0' --no-browser --NotebookApp.token=''"
+      }
+    }
+  }
