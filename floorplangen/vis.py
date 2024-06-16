@@ -67,17 +67,19 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13]):
                 point = point * resolution
                 poly.append((point[0], point[1]))
 
-                c = np.argmax(model_kwargs['room_types'][i][j-1].numpy())
+                c = np.argmax(model_kwargs['room_types'][i][j-1].cpu().numpy())
             polys.append(poly)
             types.append(c)
         # ドア以外の描画
         for poly, c in zip(polys, types):
-            # ドアは無視
+            # ドアは無視    
             if c in door_indices or c==0:
                 continue
+            # バージョンの問題かもだけど，なぜかcがnumpyだとTypeError: unhashable type: 'numpy.ndarray'がでるので
+            # 整数にするcast
+            c = int(c)
             room_type = c
             c = webcolors.hex_to_rgb(ID_COLOR[c])
-            print(poly)
             # 各点を描画(線)
             # 背景白, 線黒, type色でfill
             draw_color.append(drawsvg.Lines(*np.array(poly).flatten().tolist(), close=True, fill=ID_COLOR[room_type], fill_opacity=1.0, stroke='black', stroke_width=1))
@@ -93,6 +95,7 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13]):
         for poly, c in zip(polys, types):
             if c not in door_indices:
                 continue
+            c = int(c)
             room_type = c
             c = webcolors.hex_to_rgb(ID_COLOR[c])
             draw_color.append(drawsvg.Lines(*np.array(poly).flatten().tolist(), close=True, fill=ID_COLOR[room_type], fill_opacity=1.0, stroke='black', stroke_width=1))
