@@ -200,10 +200,11 @@ class RPlanhgDataset(Dataset):
                         house_polygon = unary_union([gm.Polygon(room[0]) for room in h])
                         room[0] = make_non_manhattan(room[0], poly, house_polygon)
 
-            for h, graph in tqdm(zip(self.org_houses, self.org_graphs), desc='processing dataset'):
+            for h, graph in tqdm(zip(self.org_houses, self.org_graphs), desc='processing each house'):
                 house = []
                 corner_bounds = []
                 num_points = 0
+                skip_house = False  # 追加：この家データをスキップするかどうかのフラグ
                 for i, room in enumerate(h):
                     # 部屋のタイプが10よりも大きい
                     if room[1]>10:
@@ -222,6 +223,9 @@ class RPlanhgDataset(Dataset):
                         cnumber_dist[room[1]].append(len(room[0]))
                     # Adding conditions
                     num_room_corners = len(room[0])
+                    if num_room_corners >= 32: # 32以上だとエラーになってしまうのでskipするようにする
+                        skip_house = True  # スキップフラグを立てる
+                        break  # ループを抜けてこの家データをスキップ
                     # それぞれのedgeにつきroom typeをone hot (25次元) rtype.shape=(線の数, 25)(基本どこも同じところが1になるはず)
                     rtype = np.repeat(np.array([get_one_hot(room[1], 25)]), num_room_corners, 0)
                     # それぞれの部屋番号をone hot (32次元) room_index.shape=(線の数, 32)(基本どこも同じところが1になるはず)
@@ -254,7 +258,8 @@ class RPlanhgDataset(Dataset):
                     room = np.concatenate((room[0], rtype, corner_index, room_index, padding_mask, connections), 1)
                     # houseのリストに格納していく
                     house.append(room)
-
+                if skip_house:
+                    continue
                 house_layouts = np.concatenate(house, 0)
                 # 角が多すぎる家は除外
                 if len(house_layouts)>max_num_points:
