@@ -1,3 +1,5 @@
+# dockerimage
+*.tar
 # dataset
 floorplan_dataset/
 rplan_json/
