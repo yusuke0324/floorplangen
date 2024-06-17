@@ -1,9 +1,9 @@
-# dockerimage
+# docikerimage
 *.tar
+*.tar.gz
 # dataset
 floorplan_dataset/
 rplan_json/
-floorplangen/processed_rplan/
 
 # models
 ckpts/
@@ -70,6 +70,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+myenv/
 
 # PyCharm
 # JetBrains specific template is already in this repo: https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
