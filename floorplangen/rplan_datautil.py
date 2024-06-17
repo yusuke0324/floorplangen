@@ -95,6 +95,7 @@ class RPlanhgDataset(Dataset):
         self.org_graphs = []
         self.org_houses = []
         max_num_points = 100
+        self.filenames = []
         # 追加
         if not os.path.exists('processed_rplan'):
             os.makedirs('processed_rplan')
@@ -109,6 +110,7 @@ class RPlanhgDataset(Dataset):
             self.gen_masks = data['gen_masks']
             self.num_coords = 2
             self.max_num_points = max_num_points
+            self.filenames = data['filenames']
             cnumber_dist = np.load(f'processed_rplan/rplan_train_{target_set}_cndist.npz', allow_pickle=True)['cnumber_dist'].item()
             if self.set_name == 'eval':
                 data = np.load(f'processed_rplan/rplan_{set_name}_{target_set}_syn.npz', allow_pickle=True)
@@ -117,12 +119,14 @@ class RPlanhgDataset(Dataset):
                 self.syn_door_masks = data['door_masks']
                 self.syn_self_masks = data['self_masks']
                 self.syn_gen_masks = data['gen_masks']
+                self.filenames = data['filenames']
         else:
             # with open(f'{base_dir}/list.txt') as f:
                 # lines = f.readlines()
             # cnt=0
             json_files = glob(f'{base_dir}/*.json')
             cnt = 0
+            self.filenames = []
             for file_name in tqdm(json_files):
                 self.current_file = file_name
                 cnt=cnt+1
@@ -134,6 +138,7 @@ class RPlanhgDataset(Dataset):
                 if self.set_name=='eval' and fp_size != target_set:
                         continue
                 a = [rms_type, rms_bbs, fp_eds, eds_to_rms]
+                self.filenames.append(int(os.path.basename(file_name).split('.')[0])) # ファイル名も保存する.文字列だとnumpyで保存できないのでintで(なのでファイル名は123.jsonの形を想定)
                 self.subgraphs.append(a)
             for graph in tqdm(self.subgraphs):
                 rms_type = graph[0]
@@ -168,6 +173,7 @@ class RPlanhgDataset(Dataset):
                     # この時点で(4点なら)[4, 1, 2]の形になっているので[4, 2]の形にする(4は4点，2はx,y)
                     house.append([contours[:,0,:], room_type])
                 self.org_graphs.append(graph_edges)
+                # print('graph_edges.shape', graph_edges.shape)
                 self.org_houses.append(house)
             # この時点で全データセットがorg_graphsに[node1, edge, node2]の形で多重リストで全間取り図のそれぞれのgraph関係が
             # org_housesに全間取りの境界情報[[x, y]の線分nparray, 部屋タイプ]がそれぞれの間取り分格納される
@@ -194,10 +200,11 @@ class RPlanhgDataset(Dataset):
                         house_polygon = unary_union([gm.Polygon(room[0]) for room in h])
                         room[0] = make_non_manhattan(room[0], poly, house_polygon)
 
-            for h, graph in tqdm(zip(self.org_houses, self.org_graphs), desc='processing dataset'):
+            for h, graph in tqdm(zip(self.org_houses, self.org_graphs), desc='processing each house'):
                 house = []
                 corner_bounds = []
                 num_points = 0
+                skip_house = False  # 追加：この家データをスキップするかどうかのフラグ
                 for i, room in enumerate(h):
                     # 部屋のタイプが10よりも大きい
                     if room[1]>10:
@@ -216,6 +223,9 @@ class RPlanhgDataset(Dataset):
                         cnumber_dist[room[1]].append(len(room[0]))
                     # Adding conditions
                     num_room_corners = len(room[0])
+                    if num_room_corners >= 32: # 32以上だとエラーになってしまうのでskipするようにする
+                        skip_house = True  # スキップフラグを立てる
+                        break  # ループを抜けてこの家データをスキップ
                     # それぞれのedgeにつきroom typeをone hot (25次元) rtype.shape=(線の数, 25)(基本どこも同じところが1になるはず)
                     rtype = np.repeat(np.array([get_one_hot(room[1], 25)]), num_room_corners, 0)
                     # それぞれの部屋番号をone hot (32次元) room_index.shape=(線の数, 32)(基本どこも同じところが1になるはず)
@@ -248,7 +258,8 @@ class RPlanhgDataset(Dataset):
                     room = np.concatenate((room[0], rtype, corner_index, room_index, padding_mask, connections), 1)
                     # houseのリストに格納していく
                     house.append(room)
-
+                if skip_house:
+                    continue
                 house_layouts = np.concatenate(house, 0)
                 # 角が多すぎる家は除外
                 if len(house_layouts)>max_num_points:
@@ -283,8 +294,17 @@ class RPlanhgDataset(Dataset):
             self.num_coords = 2
             self.graphs = graphs
 
+            print(len(self.filenames), len(self.graphs))
+            # 他のデータ同様100次元に合わせる必要がある(バージョンの問題だったから不要かも？)
+            self.filenames_expand = np.array([np.full((max_num_points,1), filename, int) for filename in self.filenames])
+            # print(self.filenames_expand[0].shape, self.graphs[0].shape, self.door_masks[0].shape, self.houses[0].shape, self.self_masks[0].shape, self.gen_masks[0].shape)
+            # Numpyのバージョンが新しいと，以下のコードで以下のエラーがでる
+            '''
+            setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (412,) + inhomogeneous part.
+            '''
+            # なので，本コードを実行する際には!pip install numpy==1.21.5をしておくこと．このエラーの原因は，self.graphsのshapeが他のnumpyのshapeと異なるから(他は100次元にpaddingされてるが，graph)
             np.savez_compressed(f'processed_rplan/rplan_{set_name}_{target_set}', graphs=self.graphs, houses=self.houses,
-                    door_masks=self.door_masks, self_masks=self.self_masks, gen_masks=self.gen_masks)
+                    door_masks=self.door_masks, self_masks=self.self_masks, gen_masks=self.gen_masks, filenames=self.filenames_expand)
             if self.set_name=='train':
                 np.savez_compressed(f'processed_rplan/rplan_{set_name}_{target_set}_cndist', cnumber_dist=cnumber_dist)
                 # cnumber_distには，cornerのnumberのdistributionが 部屋のタイプindex:edgeの数
@@ -388,7 +408,9 @@ class RPlanhgDataset(Dataset):
                 'src_key_padding_mask': 1-self.houses[idx][:, self.num_coords+89],
                 'connections': self.houses[idx][:, self.num_coords+90:self.num_coords+92],
                 'graph': graph,
+                'filename': self.filenames[idx] # どのファイルから来ているかわかる様に追加
                 }
+        # print(self.filenames[idx])
         if self.set_name == 'eval':
             syn_graph = np.concatenate((self.syn_graphs[idx], np.zeros([200-len(self.syn_graphs[idx]), 3])), 0)
             assert (graph == syn_graph).all(), idx
