@@ -1,3 +1,4 @@
+
 # bfg
 *.jar
 # docikerimage
@@ -73,7 +74,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+<<<<<<< HEAD
 myenv/
+=======
+>>>>>>> b2c7457003ab91da8528b8d8c877764003ad1993
 
 # PyCharm
 # JetBrains specific template is already in this repo: https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
@@ -157,4 +161,8 @@ virtualenv/
 .pytype/
 
 # Cython debug symbols
+<<<<<<< HEAD
 cython_debug/
+=======
+cython_debug/
+>>>>>>> b2c7457003ab91da8528b8d8c877764003ad1993
