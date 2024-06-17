@@ -1,3 +1,5 @@
+# bfg
+*.jar
 # docikerimage
 *.tar
 *.tar.gz
