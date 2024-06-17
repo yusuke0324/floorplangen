@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   app:
+    image: floorplangen-app:latest # imageをうまくbuildできない場合があるので，その場合はimageをscpしてそのimageを使う様にする
     build: .
     volumes:
       - .:/work
