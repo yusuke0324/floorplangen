@@ -11,6 +11,7 @@ from train_util import TrainLoop
 from script_util import create_diffusion_and_transformer
 from gaussian_diffusion import GaussianDiffusion
 import logger
+import dist_util
 logger.configure()
 logger.log("creating model and diffusion...")
 diffusion, transformer = create_diffusion_and_transformer()
@@ -26,12 +27,13 @@ data = load_rplanhg_data(
             set_name=set_name,
         )
 logger.log("training...")
+transformer.to(dist_util.dev())
 TrainLoop(transformer,
           diffusion,
           data,
           batch_size=8,
           lr=0.001,
-          lr_anneal_steps=11,
-          save_interval=5,
-          log_interval=5
+          lr_anneal_steps=100000,
+          save_interval=10000,
+          log_interval=10000
          ).run_loop()
