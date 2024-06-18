@@ -83,8 +83,8 @@ class TrainLoop:
         self.opt.step()
 
     def forward_backward(self, batch, cond):
-        batch.to(dist_util.dev())
-        cond.to(dist_util.dev())
+        batch = batch.to(dist_util.dev())
+        cond = {k: v.to(dist_util.dev()) for k, v in cond.items()}
         self.opt.zero_grad()
         # sample t from uniform distribution 1~1000. weights are all 1
         t, weights = self.schedule_sampler.sample(batch.shape[0], dist_util.dev())

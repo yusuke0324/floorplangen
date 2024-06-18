@@ -2,14 +2,20 @@ version: '3.8'
 
 services:
   app:
-    image: floorplangen-app:latest # imageをうまくbuildできない場合があるので，その場合はimageをscpしてそのimageを使う様にする
+    image: floorplangen-app:latest
     build: .
     volumes:
       - .:/work
     ports:
       - "8888:8888"
       - "5678:5678" # デバッグ用
-    # command: jupyter lab --ip=0.0.0.0 --allow-root --NotebookApp.token='' --NotebookApp.notebook_dir='/work'
-    # environment:
-      # - JUPYTER_ENABLE_LAB=yes
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia
     working_dir: /work

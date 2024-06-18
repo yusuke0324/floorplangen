@@ -53,9 +53,6 @@ class GaussianDiffusion:
         xtalpha = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape).permute([0, 2, 1])
         epsalpha = _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape).permute([0,2,1])
         model_output_dec, model_output_bin = model(x_t, t, xtalpha=xtalpha, epsalpha=epsalpha, **model_kwargs)
-        print('transformer forward finished!!!!!')
-        print('model_output_dec.shape, model_output_bin.shape')
-        print(model_output_dec.shape,model_output_bin.shape)
         
         # 分散の学習をする場合を想定→とおもったけどどうもエラーが出てしまうので飛ばす
         # Diffusionは分散の学習は不要説あるよね？あとで勉強する
