@@ -308,7 +308,7 @@ class GaussianDiffusion:
         predict_descrete = 32
 
 
-        # 以下はまだよくわかってない
+        # t<32の場合離散処理 (x_startを予測している)
         if t[0] < predict_descrete:
             def bin2dec(b, bits):
                 mask = 2 ** th.arange(bits - 1, -1, -1).to(b.device, b.dtype)

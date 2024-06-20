@@ -51,11 +51,10 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13], first_t=971, gif
         data_sample, model_kwards = next(data)
         sample_gt = data_sample.unsqueeze(0)
         sample_gt = sample_gt.permute([0, 1, 3, 2])
-        images, images2, images3 = vis_sample(sample_gt, model_kwargs)
+        images, images2, images3 = vis_sample(sample_gt, model_kwargs, gif=True)
 
-        plt.imshow(images2[0])
-        plt.axis('off')
-        plt.show()
+        gif = images[0]
+        display.display(gif)
 
     '''
     resolution = 256
