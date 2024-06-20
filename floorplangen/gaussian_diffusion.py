@@ -169,7 +169,7 @@ class GaussianDiffusion:
             device=device,
             progress=progress
         ))):
-            if i>970:
+            if i>969: # 最後の30stepを保存
                 myfinal.append(sample['sample'])
         return th.stack(myfinal)
 

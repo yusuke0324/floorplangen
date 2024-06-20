@@ -19,3 +19,4 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     runtime: nvidia
     working_dir: /work
+    shm_size: '8gb' # 共有メモリの設定．DataLoaderは共有メモリを使用するが，どうやらデフォだと64Mで少なすぎてバッチサイズを上げるとエラーになる
