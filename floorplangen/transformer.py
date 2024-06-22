@@ -273,7 +273,7 @@ class TransformerModel(nn.Module):
         # room types, corner index, room indexのcodinditionは連結してembedding layerに入れる(Linear)
         if self.condition_channels>0:
             cond = None
-            for key in [f'{prefix}room_types', f'{prefix}corner_indices', f'{prefix}room_indices']:
+            for key in [f'{prefix}room_types', f'{prefix}corner_indices', f'{prefix}room_indices']: # 25+32+32=89 channels
                 if cond is None:
                     cond = kwargs[key]
                 else:

@@ -94,6 +94,7 @@ class RPlanhgDataset(Dataset):
         self.subgraphs = []
         self.org_graphs = []
         self.org_houses = []
+        self.org_boundary_coords = []
         max_num_points = 100
         self.filenames = []
         # 追加
@@ -111,6 +112,7 @@ class RPlanhgDataset(Dataset):
             self.num_coords = 2
             self.max_num_points = max_num_points
             self.filenames = data['filenames']
+            self.boundary_coords = data['boundary_coords']
             cnumber_dist = np.load(f'processed_rplan/rplan_train_{target_set}_cndist.npz', allow_pickle=True)['cnumber_dist'].item()
             if self.set_name == 'eval':
                 data = np.load(f'processed_rplan/rplan_{set_name}_{target_set}_syn.npz', allow_pickle=True)
@@ -131,13 +133,13 @@ class RPlanhgDataset(Dataset):
                 self.current_file = file_name
                 cnt=cnt+1
                 # file_name = f'{base_dir}/{line[:-1]}'
-                rms_type, fp_eds,rms_bbs,eds_to_rms=reader(file_name) 
+                rms_type, fp_eds,rms_bbs,eds_to_rms,boundary_coords=reader(file_name) 
                 fp_size = len([x for x in rms_type if x != 15 and x != 17])
                 if self.set_name=='train' and fp_size == target_set:
                         continue
                 if self.set_name=='eval' and fp_size != target_set:
                         continue
-                a = [rms_type, rms_bbs, fp_eds, eds_to_rms]
+                a = [rms_type, rms_bbs, fp_eds, eds_to_rms,boundary_coords]
                 self.filenames.append(int(os.path.basename(file_name).split('.')[0])) # ファイル名も保存する.文字列だとnumpyで保存できないのでintで(なのでファイル名は123.jsonの形を想定)
                 self.subgraphs.append(a)
             for graph in tqdm(self.subgraphs):
@@ -145,10 +147,13 @@ class RPlanhgDataset(Dataset):
                 rms_bbs = graph[1]
                 fp_eds = graph[2]
                 eds_to_rms= graph[3]
+                boundary_coords=graph[4]
                 rms_bbs = np.array(rms_bbs)
                 fp_eds = np.array(fp_eds)
+                boundary_coords = np.array(boundary_coords)
 
                 # extract boundary box and centralize
+                # さらにやる意味ある．．．？
 
                 tl = np.min(rms_bbs[:, :2], 0)
                 br = np.max(rms_bbs[:, 2:], 0)
@@ -157,6 +162,7 @@ class RPlanhgDataset(Dataset):
                 rms_bbs[:, 2:] -= shift
                 fp_eds[:, :2] -= shift
                 fp_eds[:, 2:] -= shift
+                boundary_coords -= shift
                 tl -= shift
                 br -= shift
 
@@ -175,6 +181,7 @@ class RPlanhgDataset(Dataset):
                 self.org_graphs.append(graph_edges)
                 # print('graph_edges.shape', graph_edges.shape)
                 self.org_houses.append(house)
+                self.org_boundary_coords.append(boundary_coords)
             # この時点で全データセットがorg_graphsに[node1, edge, node2]の形で多重リストで全間取り図のそれぞれのgraph関係が
             # org_housesに全間取りの境界情報[[x, y]の線分nparray, 部屋タイプ]がそれぞれの間取り分格納される
             houses = []
@@ -182,6 +189,7 @@ class RPlanhgDataset(Dataset):
             self_masks = []
             gen_masks = []
             graphs = []
+            padded_boundary_coords = []
             if self.set_name=='train':
                 cnumber_dist = defaultdict(list)
 
@@ -199,8 +207,7 @@ class RPlanhgDataset(Dataset):
                         poly = gm.Polygon(room[0])
                         house_polygon = unary_union([gm.Polygon(room[0]) for room in h])
                         room[0] = make_non_manhattan(room[0], poly, house_polygon)
-
-            for h, graph in tqdm(zip(self.org_houses, self.org_graphs), desc='processing each house'):
+            for h, graph, boundary in tqdm(zip(self.org_houses, self.org_graphs, self.org_boundary_coords), desc='processing each house'):
                 house = []
                 corner_bounds = []
                 num_points = 0
@@ -286,6 +293,11 @@ class RPlanhgDataset(Dataset):
                 self_masks.append(self_mask)
                 gen_masks.append(gen_mask)
                 graphs.append(graph)
+                
+                # boundary_coordsをパディングして追加
+                padded_boundary = np.zeros((max_num_points, 2))
+                padded_boundary[:len(boundary)] = boundary
+                padded_boundary_coords.append(padded_boundary)
             self.max_num_points = max_num_points
             self.houses = houses
             self.door_masks = door_masks
@@ -293,6 +305,7 @@ class RPlanhgDataset(Dataset):
             self.gen_masks = gen_masks
             self.num_coords = 2
             self.graphs = graphs
+            self.boundary_coords = padded_boundary_coords
 
             print(len(self.filenames), len(self.graphs))
             # 他のデータ同様100次元に合わせる必要がある(バージョンの問題だったから不要かも？)
@@ -304,7 +317,7 @@ class RPlanhgDataset(Dataset):
             '''
             # なので，本コードを実行する際には!pip install numpy==1.21.5をしておくこと．このエラーの原因は，self.graphsのshapeが他のnumpyのshapeと異なるから(他は100次元にpaddingされてるが，graph)
             np.savez_compressed(f'processed_rplan/rplan_{set_name}_{target_set}', graphs=self.graphs, houses=self.houses,
-                    door_masks=self.door_masks, self_masks=self.self_masks, gen_masks=self.gen_masks, filenames=self.filenames_expand)
+                    door_masks=self.door_masks, self_masks=self.self_masks, gen_masks=self.gen_masks, filenames=self.filenames_expand, boundary_coords=self.boundary_coords)
             if self.set_name=='train':
                 np.savez_compressed(f'processed_rplan/rplan_{set_name}_{target_set}_cndist', cnumber_dist=cnumber_dist)
                 # cnumber_distには，cornerのnumberのdistributionが 部屋のタイプindex:edgeの数
@@ -408,7 +421,8 @@ class RPlanhgDataset(Dataset):
                 'src_key_padding_mask': 1-self.houses[idx][:, self.num_coords+89],
                 'connections': self.houses[idx][:, self.num_coords+90:self.num_coords+92],
                 'graph': graph,
-                'filename': self.filenames[idx] # どのファイルから来ているかわかる様に追加
+                'filename': self.filenames[idx], # どのファイルから来ているかわかる様に追加,
+                'boundary_coords': self.boundary_coords[idx]
                 }
         # print(self.filenames[idx])
         if self.set_name == 'eval':
@@ -639,23 +653,27 @@ def reader(filename):
         fp_eds=info['edges']
         rms_type=info['room_type']
         eds_to_rms=info['ed_rm']
+        boundary_coords = info['boundary_coords']
         s_r=0
         for rmk in range(len(rms_type)):
             if(rms_type[rmk]!=17):
                 s_r=s_r+1   
         rms_bbs = np.array(rms_bbs)/256.0
-        fp_eds = np.array(fp_eds)/256.0 
+        fp_eds = np.array(fp_eds)/256.0
+        boundary_coords = np.array(boundary_coords)/256.0 
         fp_eds = fp_eds[:, :4]
-        tl = np.min(rms_bbs[:, :2], 0)
-        br = np.max(rms_bbs[:, 2:], 0)
+        tl = np.min(rms_bbs[:, :2], 0) # top left 
+        br = np.max(rms_bbs[:, 2:], 0) # bottom right
         shift = (tl+br)/2.0 - 0.5
         rms_bbs[:, :2] -= shift 
         rms_bbs[:, 2:] -= shift
         fp_eds[:, :2] -= shift
-        fp_eds[:, 2:] -= shift 
+        fp_eds[:, 2:] -= shift
+        # boundary_coords.shape = [num_edge, 2]
+        boundary_coords[:, :2] -= shift
         tl -= shift
         br -= shift
-        return rms_type,fp_eds,rms_bbs,eds_to_rms
+        return rms_type,fp_eds,rms_bbs,eds_to_rms,boundary_coords
 
 if __name__ == '__main__':
     dataset = RPlanhgDataset('train', False, 8)
