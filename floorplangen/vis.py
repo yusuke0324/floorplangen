@@ -1,4 +1,5 @@
 import io
+import os
 import imageio
 import IPython.display as display
 from tqdm import tqdm
@@ -172,3 +173,48 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13], first_t=971, gif
         
     # return batch_images, batch_images2, batch_images3, batch_images_color
     return batch_images_color
+
+def save_images(save_dir, images_color, images_color_gt, model_kwargs):
+
+    """
+    Args
+    -------
+        save_dir: 保存先のフォルダパス．例:'/work/floorplangen/ckpts/openai_2024_06_26_02_57_22_153429'
+        images_color: vis_sample(sample, gif=False)関数の返り値.sampleは，diffusion.p_sample_loopの戻り値を想定(生成データ)
+        images_color_gt: vis_sample(sample_gt, gif=False)関数の返り値. sample_gtはnext(data)の第一戻り値を想定(生成データではない)
+        model_kwargs: はnext(data)の第二戻り値
+
+
+    """
+    gifs_dir = os.path.join(save_dir, 'gifs')
+    gt_dir = os.path.join(save_dir, 'ground_truth')
+    
+    os.makedirs(gifs_dir, exist_ok=True)
+    os.makedirs(gt_dir, exist_ok=True)
+    
+    for idx in range(len(images_color)):
+        filename = str(model_kwargs['filename'][idx][0].item()) + '.gif'
+        filepath = os.path.join(gifs_dir, filename)
+        suffix = 1
+
+        while os.path.exists(filepath):
+            filename = f"{str(model_kwargs['filename'][idx][0].item())}_{suffix}.gif"
+            filepath = os.path.join(gifs_dir, filename)
+            suffix += 1
+
+        image_bytes = [np.array(img) for img in images_color[idx]]
+        imageio.mimsave(filepath, image_bytes, format='GIF', fps=10)
+
+        # Save the last frame of the gif as a PNG image
+        png_filepath = filepath.replace('.gif', '.png')
+        imageio.imwrite(png_filepath, image_bytes[-1])
+
+        gt_filename = f"{str(model_kwargs['filename'][idx][0].item())}_gt.png"
+        gt_filepath = os.path.join(gt_dir, gt_filename)
+
+        if not os.path.exists(gt_filepath):
+            # gtの場合リストの長さは1
+            images_color_gt[idx][0].save(gt_filepath, 'PNG')
+# Example usage
+# save_dir = 'path_to_save_directory'
+# save_images(save_dir, all_images[-1], all_images_gt[-1], model_kwargs)
