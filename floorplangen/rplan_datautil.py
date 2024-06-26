@@ -454,17 +454,31 @@ class RPlanhgDataset(Dataset):
                 'syn_graph': syn_graph,
                 })
         if self.set_name == 'train':
+            # 全て[100, 2]のshape
+            # print(f'arr.shape: {arr.shape}')　
+            # print(f'boundary_points.shape: {cond["boundary_points"].shape}') 
+            # print(f'interpolated_boundary_points.shape: {cond["interpolated_boundary_points"].shape}')
             #### Random Rotate
             rotation = random.randint(0,3)
             if rotation == 1:
                 arr[:, [0, 1]] = arr[:, [1, 0]]
                 arr[:, 0] = -arr[:, 0]
+                # boundary情報も同様にrotateする
+                cond['boundary_points'][:, [0, 1]] = cond['boundary_points'][:, [1, 0]]
+                cond['boundary_points'][:, 0] = -cond['boundary_points'][:, 0]
+                cond['interpolated_boundary_points'][:, [0, 1]] = cond['interpolated_boundary_points'][:, [1, 0]]
+                cond['interpolated_boundary_points'][:, 0] = -cond['interpolated_boundary_points'][:, 0]
             elif rotation == 2:
                 arr[:, [0, 1]] = -arr[:, [1, 0]]
+                cond['boundary_points'][:, [0, 1]] = -cond['boundary_points'][:, [1, 0]]
+                cond['interpolated_boundary_points'][:, [0, 1]] = -cond['interpolated_boundary_points'][:, [1, 0]]
             elif rotation == 3:
                 arr[:, [0, 1]] = arr[:, [1, 0]]
                 arr[:, 1] = -arr[:, 1]
-
+                cond['boundary_points'][:, [0, 1]] = cond['boundary_points'][:, [1, 0]]
+                cond['boundary_points'][:, 1] = -cond['boundary_points'][:, 1]
+                cond['interpolated_boundary_points'][:, [0, 1]] = cond['interpolated_boundary_points'][:, [1, 0]]
+                cond['interpolated_boundary_points'][:, 1] = -cond['interpolated_boundary_points'][:, 1]
             ## To generate any rotation uncomment this
 
             # if self.non_manhattan:
