@@ -24,14 +24,31 @@ hyperparams = {
     "learning_rate": 0.001, # 論文は1e-3. 100kstep毎に*0.1
     "lr_anneal_steps": 250000, # 論文は250k
     "save_interval": 25000,
-    "log_interval": 25000
+    "log_interval": 25000,
+    "in_channels": 18,
+    "condition_channels": 89,
+    "model_channels": 128,
+    "out_channels": 2,
+    "dataset": None,
+    "use_checkpoint": None,
+    "use_unet": False,
+    "analog_bit": False,
+    "use_boundary": True
 }
 
 logger.configure()
 logger.log("Hyperparameters: " + json.dumps(hyperparams, indent=4)) # ハイパーパラメータをログに記録
 logger.log("creating model and diffusion...")
 
-diffusion, transformer = create_diffusion_and_transformer()
+diffusion, transformer = create_diffusion_and_transformer(in_channels=hyperparams["in_channels"],
+                                    condition_channels=hyperparams["condition_channels"],
+                                    model_channels=hyperparams["model_channels"],
+                                    out_channels=hyperparams["out_channels"],
+                                    dataset=hyperparams["dataset"],
+                                    use_checkpoint=hyperparams["use_checkpoint"],
+                                    use_unet=hyperparams["use_unet"],
+                                    analog_bit=hyperparams["analog_bit"],
+                                    use_boundary=hyperparams["use_boundary"])
 logger.log("creating data loader...")
 
 data = load_rplanhg_data(

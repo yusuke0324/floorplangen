@@ -6,6 +6,7 @@ services:
     build: .
     volumes:
       - .:/work
+      - ~/rplan-data-reader:/work/rplan-data-reader
     ports:
       - "8888:8888"
       - "5678:5678" # デバッグ用

@@ -13,7 +13,7 @@ ID_COLOR = {1: '#EE4D4D', 2: '#C67C7B', 3: '#FFD274', 4: '#BEBEBE', 5: '#BFE3E8'
             6: '#7BA779', 7: '#E87A90', 8: '#FF8C69', 10: '#1F849B', 11: '#727171',
             13: '#785A67', 12: '#D3A2C7'}
 
-def _add_text_to_image(image, text, position=(10, 10), font_size=60, font_color="white"):
+def _add_text_to_image(image, text, position=(10, 10), font_size=60, font_color="black"):
     try:
         # システムのフォントが見つからない場合、デフォルトフォントを使用
         font = ImageFont.truetype("arial", font_size)
@@ -61,11 +61,13 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13], first_t=971, gif
     batch_images = []
     batch_images2 = []
     batch_images3 = []
+    batch_images_color = []
     for i in tqdm(range(sample.shape[1])):
         # 各バッチを処理
         images = []
         images2 = []
         images3 = []
+        images_color = []
         for k in range(sample.shape[0]):
             # 各t:971~1000を処理
             t = k + first_t
@@ -133,32 +135,40 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13], first_t=971, gif
                 for corner in poly:
                     draw.append(drawsvg.Circle(corner[0], corner[1], 2*(resolution/256), fill=ID_COLOR[room_type], fill_opacity=1.0, stroke='gray', stroke_width=0.25))
                     draw3.append(drawsvg.Circle(corner[0], corner[1], 2*(resolution/256), fill=ID_COLOR[room_type], fill_opacity=1.0, stroke='gray', stroke_width=0.25))
-            image = Image.open(io.BytesIO(cairosvg.svg2png(draw.asSvg())))
-            image2 = Image.open(io.BytesIO(cairosvg.svg2png(draw2.asSvg())))
-            image3 = Image.open(io.BytesIO(cairosvg.svg2png(draw3.asSvg())))
+            # 全部やると時間かかりすぎるので一つだけ
+            # image = Image.open(io.BytesIO(cairosvg.svg2png(draw.asSvg())))
+            # image2 = Image.open(io.BytesIO(cairosvg.svg2png(draw2.asSvg())))
+            # image3 = Image.open(io.BytesIO(cairosvg.svg2png(draw3.asSvg())))
+            image_color = Image.open(io.BytesIO(cairosvg.svg2png(draw_color.asSvg())))
 
-            image_with_text = _add_text_to_image(image, f't={t}')
-            image2_with_text = _add_text_to_image(image2, f't={t}')
-            image3_with_text = _add_text_to_image(image3, f't={t}')
+            # image_with_text = _add_text_to_image(image, f't={t}')
+            # image2_with_text = _add_text_to_image(image2, f't={t}')
+            # image3_with_text = _add_text_to_image(image3, f't={t}')
+            image_color_with_text = _add_text_to_image(image_color, f't={t}')
 
-            images.append(image_with_text)
-            images2.append(image2_with_text)
-            images3.append(image3_with_text)
+            # images.append(image_with_text)
+            # images2.append(image2_with_text)
+            # images3.append(image3_with_text)
+            images_color.append(image_color_with_text)
 
             if gif:
-                images_gif = create_gif(images)
-                images2_gif = create_gif(images2)
-                images3_gif = create_gif(images3)
+                # images_gif = create_gif(images)
+                # images2_gif = create_gif(images2)
+                # images3_gif = create_gif(images3)
+                images_color_gif = create_gif(images_color)
 
         if gif:
-            batch_images.append(images_gif)
-            batch_images2.append(images2_gif)
-            batch_images3.append(images3_gif)
+            # batch_images.append(images_gif)
+            # batch_images2.append(images2_gif)
+            # batch_images3.append(images3_gif)
+            batch_images_color.append(images_color_gif)
         else:
-            batch_images.append(images)
-            batch_images2.append(images2)
-            batch_images3.append(images3)
+            # batch_images.append(images)
+            # batch_images2.append(images2)
+            # batch_images3.append(images3)
+            batch_images_color.append(images_color)
 
         
         
-    return batch_images, batch_images2, batch_images3
+    # return batch_images, batch_images2, batch_images3, batch_images_color
+    return batch_images_color

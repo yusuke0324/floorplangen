@@ -16,6 +16,7 @@ from shapely import geometry as gm
 from shapely.ops import unary_union
 from collections import defaultdict
 from glob import glob
+from scipy.interpolate import interp1d
 import copy
 
 def load_rplanhg_data(
@@ -112,7 +113,8 @@ class RPlanhgDataset(Dataset):
             self.num_coords = 2
             self.max_num_points = max_num_points
             self.filenames = data['filenames']
-            self.boundary_coords = data['boundary_coords']
+            self.boundary_points = data['boundary_points']
+            self.interpolated_boundary_points = data['interpolated_boundary_points']
             cnumber_dist = np.load(f'processed_rplan/rplan_train_{target_set}_cndist.npz', allow_pickle=True)['cnumber_dist'].item()
             if self.set_name == 'eval':
                 data = np.load(f'processed_rplan/rplan_{set_name}_{target_set}_syn.npz', allow_pickle=True)
@@ -189,7 +191,8 @@ class RPlanhgDataset(Dataset):
             self_masks = []
             gen_masks = []
             graphs = []
-            padded_boundary_coords = []
+            boundary_points = []
+            interpolated_boundary_points = []
             if self.set_name=='train':
                 cnumber_dist = defaultdict(list)
 
@@ -294,10 +297,19 @@ class RPlanhgDataset(Dataset):
                 gen_masks.append(gen_mask)
                 graphs.append(graph)
                 
-                # boundary_coordsをパディングして追加
+                
+                interpolated_boundary = interpolate_loop(boundary, num_points=max_num_points)
+                boundary = (boundary * 2.0) - 1.0
+                interpolated_boundary = (interpolated_boundary * 2.0) - 1.0
+
+                # boundary_coordsをパディングして追加. condはdictだけど，それぞれのcondの値はバッチごとにstackしたnparrayなので長さを揃える必要がある
                 padded_boundary = np.zeros((max_num_points, 2))
+                # # boundary_coordsを0〜1->1〜1に変換(他の座標に合わせる．多分これでいいはず)
+                # boundary = (boundary * 2.0) - 1.0
                 padded_boundary[:len(boundary)] = boundary
-                padded_boundary_coords.append(padded_boundary)
+
+                boundary_points.append(padded_boundary)
+                interpolated_boundary_points.append(interpolated_boundary)
             self.max_num_points = max_num_points
             self.houses = houses
             self.door_masks = door_masks
@@ -305,7 +317,8 @@ class RPlanhgDataset(Dataset):
             self.gen_masks = gen_masks
             self.num_coords = 2
             self.graphs = graphs
-            self.boundary_coords = padded_boundary_coords
+            self.boundary_points = boundary_points
+            self.interpolated_boundary_points = interpolated_boundary_points
 
             print(len(self.filenames), len(self.graphs))
             # 他のデータ同様100次元に合わせる必要がある(バージョンの問題だったから不要かも？)
@@ -317,7 +330,7 @@ class RPlanhgDataset(Dataset):
             '''
             # なので，本コードを実行する際には!pip install numpy==1.21.5をしておくこと．このエラーの原因は，self.graphsのshapeが他のnumpyのshapeと異なるから(他は100次元にpaddingされてるが，graph)
             np.savez_compressed(f'processed_rplan/rplan_{set_name}_{target_set}', graphs=self.graphs, houses=self.houses,
-                    door_masks=self.door_masks, self_masks=self.self_masks, gen_masks=self.gen_masks, filenames=self.filenames_expand, boundary_coords=self.boundary_coords)
+                    door_masks=self.door_masks, self_masks=self.self_masks, gen_masks=self.gen_masks, filenames=self.filenames_expand, boundary_points=self.boundary_points, interpolated_boundary_points=self.interpolated_boundary_points)
             if self.set_name=='train':
                 np.savez_compressed(f'processed_rplan/rplan_{set_name}_{target_set}_cndist', cnumber_dist=cnumber_dist)
                 # cnumber_distには，cornerのnumberのdistributionが 部屋のタイプindex:edgeの数
@@ -422,7 +435,8 @@ class RPlanhgDataset(Dataset):
                 'connections': self.houses[idx][:, self.num_coords+90:self.num_coords+92],
                 'graph': graph,
                 'filename': self.filenames[idx], # どのファイルから来ているかわかる様に追加,
-                'boundary_coords': self.boundary_coords[idx]
+                'boundary_points': self.boundary_points[idx],
+                'interpolated_boundary_points': self.interpolated_boundary_points[idx]
                 }
         # print(self.filenames[idx])
         if self.set_name == 'eval':
@@ -664,16 +678,69 @@ def reader(filename):
         fp_eds = fp_eds[:, :4]
         tl = np.min(rms_bbs[:, :2], 0) # top left 
         br = np.max(rms_bbs[:, 2:], 0) # bottom right
-        shift = (tl+br)/2.0 - 0.5
+        shift = (tl+br)/2.0 - 0.5 
+        # 実際に値をみたらshiftが0（tl+br=1）になっていて，既に正規化されていると思われる
         rms_bbs[:, :2] -= shift 
         rms_bbs[:, 2:] -= shift
         fp_eds[:, :2] -= shift
         fp_eds[:, 2:] -= shift
         # boundary_coords.shape = [num_edge, 2]
         boundary_coords[:, :2] -= shift
+        # この時点で0~1に正規化されている想定
         tl -= shift
         br -= shift
         return rms_type,fp_eds,rms_bbs,eds_to_rms,boundary_coords
+    
+def interpolate_loop(coords, num_points=100):
+    """
+    Interpolate the given loop coordinates to a specified number of points.
+    
+    Usage:
+        from rplan_datautil import reader
+        from glob import glob
+        base_dir = '../rplan_json'
+        json_files = glob(f'{base_dir}/*.json')
+        rms_type, fp_eds,rms_bbs,eds_to_rms,boundary_coords = reader(json_files[0])
+        new_coords = interpolate_loop(boundary_coords, num_points=100)
+
+        # Show the interpolated loop (optional)
+        plt.figure(figsize=(6, 6))
+        plt.plot(boundary_coords[:, 0], boundary_coords[:, 1], 'o-', label='Original')
+        plt.plot(new_coords[:, 0], new_coords[:, 1], 'x-', label='Interpolated')
+        plt.legend()
+        plt.show()
+
+    Parameters:
+        coords (numpy array): Array of shape [N, 2] with the loop coordinates.
+        num_points (int): The number of points to interpolate.
+
+    Returns:
+        numpy array: Interpolated loop coordinates.
+    """
+    # Remove padding (0, 0) and get unique points
+    coords = coords[~np.all(coords == 0, axis=1)]
+    # coords = np.unique(coords, axis=0)
+    
+    # Close the loop
+    if not np.array_equal(coords[0], coords[-1]):
+        coords = np.vstack([coords, coords[0]])
+    
+    # Calculate the cumulative distance along the loop
+    distances = np.sqrt(np.sum(np.diff(coords, axis=0)**2, axis=1))
+    cumulative_distances = np.insert(np.cumsum(distances), 0, 0)
+    total_distance = cumulative_distances[-1]
+    
+    # Create an interpolator for x and y coordinates
+    interp_func_x = interp1d(cumulative_distances, coords[:, 0], kind='linear')
+    interp_func_y = interp1d(cumulative_distances, coords[:, 1], kind='linear')
+    
+    # Generate new points along the loop
+    new_distances = np.linspace(0, total_distance, num_points)
+    new_coords_x = interp_func_x(new_distances)
+    new_coords_y = interp_func_y(new_distances)
+    
+    new_coords = np.stack([new_coords_x, new_coords_y], axis=-1)
+    return new_coords
 
 if __name__ == '__main__':
     dataset = RPlanhgDataset('train', False, 8)

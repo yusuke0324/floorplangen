@@ -114,18 +114,26 @@ class EncoderLayer(nn.Module):
         super().__init__()
         self.norm_1 = nn.InstanceNorm1d(d_model)
         self.norm_2 = nn.InstanceNorm1d(d_model)
+        self.norm_boundary = nn.InstanceNorm1d(d_model)
         self.self_attn = MultiHeadAttention(heads, d_model)
         self.door_attn = MultiHeadAttention(heads, d_model)
         self.gen_attn = MultiHeadAttention(heads, d_model)
         self.ff = FeedForward(d_model, d_model*2, dropout, activation)
         self.dropout = nn.Dropout(dropout)
         
-    def forward(self, x, door_mask, self_mask, gen_mask):
+    def forward(self, x, door_mask, self_mask, gen_mask, boundary_emb=None):
         assert (gen_mask.max()==1 and gen_mask.min()==0), f"{gen_mask.max()}, {gen_mask.min()}"
         x2 = self.norm_1(x)
-        x = x + self.dropout(self.door_attn(x2,x2,x2,door_mask)) \
-                + self.dropout(self.self_attn(x2, x2, x2, self_mask)) \
-                + self.dropout(self.gen_attn(x2, x2, x2, gen_mask))
+        if boundary_emb is not None: # boundaryをattentionに追加
+            x2_boundary = x2 + self.norm_boundary(boundary_emb)
+            x = x + self.dropout(self.door_attn(x2,x2,x2,door_mask)) \
+                    + self.dropout(self.self_attn(x2, x2, x2, self_mask)) \
+                    + self.dropout(self.gen_attn(x2, x2, x2, gen_mask)) \
+                    # + self.dropout(self.gen_attn(x2_boundary, x2_boundary, x2_boundary)) 
+        else:
+            x = x + self.dropout(self.door_attn(x2,x2,x2,door_mask)) \
+                    + self.dropout(self.self_attn(x2, x2, x2, self_mask)) \
+                    + self.dropout(self.gen_attn(x2, x2, x2, gen_mask)) 
         x2 = self.norm_2(x)
         x = x + self.dropout(self.ff(x2))
         return x
@@ -145,6 +153,7 @@ class TransformerModel(nn.Module):
         use_checkpoint,
         use_unet,
         analog_bit,
+        use_boundary=False,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -156,6 +165,7 @@ class TransformerModel(nn.Module):
         self.analog_bit = analog_bit
         self.use_unet = use_unet
         self.num_layers = 4
+        self.use_boundary = use_boundary
 
         # self.pos_encoder = PositionalEncoding(model_channels, 0.001)
         # self.activation = nn.SiLU()
@@ -169,6 +179,13 @@ class TransformerModel(nn.Module):
         )
         self.input_emb = nn.Linear(self.in_channels, self.model_channels)
         self.condition_emb = nn.Linear(self.condition_channels, self.model_channels)
+        # boundary用のembedding. 100*2次元→128に変換
+        self.boundary_emb = nn.Linear(200, self.model_channels)
+        
+
+        # boundary coods用 embedding. boundary coordsは，部屋ごとに一つの情報を取るので，[batch_size, 100, 2] -> [batch_size, emb_dim]の形にして，
+        # condition_embの入力にboundary情報のembベクトルをconcatするイメージ
+        
 
         if use_unet:
             self.unet = UNet(self.model_channels, 1)
@@ -272,17 +289,47 @@ class TransformerModel(nn.Module):
         input_emb = self.input_emb(x)
         # room types, corner index, room indexのcodinditionは連結してembedding layerに入れる(Linear)
         if self.condition_channels>0:
+            condition_keys = [f'{prefix}room_types', f'{prefix}corner_indices', f'{prefix}room_indices']
+            # ここにシンプルにboundary_coordsを入れても意味ない．ここに入れるのはあくまでも各頂点に対応した情報のみ
+
             cond = None
-            for key in [f'{prefix}room_types', f'{prefix}corner_indices', f'{prefix}room_indices']: # 25+32+32=89 channels
+            for key in condition_keys: # 25+32+32=89 channels
                 if cond is None:
                     cond = kwargs[key]
                 else:
                     cond = th.cat((cond, kwargs[key]), 2)
-            cond_emb = self.condition_emb(cond.float())
+            if self.use_boundary:
+            #     #[TODO] eval datasetにも追加しないと
+                # condition_keys.append(f'{prefix}boundary_coords')
+                boundary = kwargs[f'{prefix}interpolated_boundary_points']
+                # boundray.shape = [batch_size, 100, 2] ->[batch_size, 200]
+                boundary = boundary.view(boundary.shape[0], -1)
+                boundary_emb = self.boundary_emb(boundary.float()) # [batch_size, 200]->[batch_size, 128]
+                boundary_emb = boundary_emb.view(boundary_emb.shape[0], 1, boundary_emb.shape[1]) # [batch_size, 128] -> [batch_size, 1, 128]
+                boundary_emb = boundary_emb.expand(boundary_emb.shape[0], input_emb.shape[1], boundary_emb.shape[2])
 
+
+
+            cond_emb = self.condition_emb(cond.float())
+        else:
+            cond_emb = th.zeros_like(input_emb)
+
+        
         # PositionalEncoding and DM model
+        # ここにboundary_embを足すのは違う気がしてる．だって，boundary_embは100次元目一杯使ってるのに対して以下はmaskに対応した次元のみ使用．なのでboundary_embは別でattentionを組む
+        # それかもしくはtと同じように1次元にして足し合わせるか？
         out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1))
+        if self.use_boundary:
+            out += boundary_emb
+        # if self.use_boundary:
+        #     boundary = kwargs[f'{prefix}interpolated_boundary_points'].float()
+        #     boundary_emb = self.boundary_emb(boundary) # (batch_size, 100, 2) ->(batch_size, 100, 128) 
+        # else:
+        #     boundary_emb = None
+        
         for layer in self.transformer_layers:
+            # boundary_embをattentionに入れるのはうまくいかないぽいかったのでとりあえずなし
+            # out = layer(out, kwargs[f'{prefix}door_mask'], kwargs[f'{prefix}self_mask'], kwargs[f'{prefix}gen_mask'], boundary_emb)
             out = layer(out, kwargs[f'{prefix}door_mask'], kwargs[f'{prefix}self_mask'], kwargs[f'{prefix}gen_mask'])
 
         out_dec = self.output_linear1(out)
