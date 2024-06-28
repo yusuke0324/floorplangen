@@ -129,7 +129,7 @@ class EncoderLayer(nn.Module):
             x = x + self.dropout(self.door_attn(x2,x2,x2,door_mask)) \
                     + self.dropout(self.self_attn(x2, x2, x2, self_mask)) \
                     + self.dropout(self.gen_attn(x2, x2, x2, gen_mask)) \
-                    # + self.dropout(self.gen_attn(x2_boundary, x2_boundary, x2_boundary)) 
+                    + self.dropout(self.gen_attn(x2_boundary, x2_boundary, x2_boundary)) 
         else:
             x = x + self.dropout(self.door_attn(x2,x2,x2,door_mask)) \
                     + self.dropout(self.self_attn(x2, x2, x2, self_mask)) \
@@ -154,6 +154,7 @@ class TransformerModel(nn.Module):
         use_unet,
         analog_bit,
         use_boundary=False,
+        use_boundary_attn=False
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -166,6 +167,7 @@ class TransformerModel(nn.Module):
         self.use_unet = use_unet
         self.num_layers = 4
         self.use_boundary = use_boundary
+        self.use_boundary_attn = use_boundary_attn 
 
         # self.pos_encoder = PositionalEncoding(model_channels, 0.001)
         # self.activation = nn.SiLU()
@@ -180,7 +182,10 @@ class TransformerModel(nn.Module):
         self.input_emb = nn.Linear(self.in_channels, self.model_channels)
         self.condition_emb = nn.Linear(self.condition_channels, self.model_channels)
         # boundary用のembedding. 100*2次元→128に変換
-        self.boundary_emb = nn.Linear(200, self.model_channels)
+        if self.use_boundary:
+            self.boundary_emb = nn.Linear(200, self.model_channels)
+        if self.use_boundary_attn:
+            self.boundary_emb_attn = nn.Linear(2, self.model_channels)
         
 
         # boundary coods用 embedding. boundary coordsは，部屋ごとに一つの情報を取るので，[batch_size, 100, 2] -> [batch_size, emb_dim]の形にして，
@@ -321,6 +326,9 @@ class TransformerModel(nn.Module):
         out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1))
         if self.use_boundary:
             out += boundary_emb
+        if self.use_boundary_attn:
+            boundary_attn = kwargs[f'{prefix}interpolated_boundary_points']
+            boundary_attn_emb = self.boundary_emb_attn(boundary_attn.float())# (batch_size, 100, 2) ->(batch_size, 100, 128)
         # if self.use_boundary:
         #     boundary = kwargs[f'{prefix}interpolated_boundary_points'].float()
         #     boundary_emb = self.boundary_emb(boundary) # (batch_size, 100, 2) ->(batch_size, 100, 128) 
@@ -329,8 +337,10 @@ class TransformerModel(nn.Module):
         
         for layer in self.transformer_layers:
             # boundary_embをattentionに入れるのはうまくいかないぽいかったのでとりあえずなし
-            # out = layer(out, kwargs[f'{prefix}door_mask'], kwargs[f'{prefix}self_mask'], kwargs[f'{prefix}gen_mask'], boundary_emb)
-            out = layer(out, kwargs[f'{prefix}door_mask'], kwargs[f'{prefix}self_mask'], kwargs[f'{prefix}gen_mask'])
+            if self.use_boundary_attn:
+                out = layer(out, kwargs[f'{prefix}door_mask'], kwargs[f'{prefix}self_mask'], kwargs[f'{prefix}gen_mask'], boundary_attn_emb)
+            else:
+                out = layer(out, kwargs[f'{prefix}door_mask'], kwargs[f'{prefix}self_mask'], kwargs[f'{prefix}gen_mask'])
 
         out_dec = self.output_linear1(out)
         out_dec = self.activation(out_dec)

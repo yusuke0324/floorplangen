@@ -9,7 +9,8 @@ def create_diffusion_and_transformer(in_channels=18,
                                     use_checkpoint=None,
                                     use_unet=False,
                                     analog_bit=False,
-                                    use_boundary=True
+                                    use_boundary=True,
+                                    use_boundary_attn=True
 ):
     '''
     input_channels = 2+8*2 # AU()により，隣接した点との間に7点=計9点の座標を取っている
@@ -30,4 +31,5 @@ def create_diffusion_and_transformer(in_channels=18,
                                                 use_checkpoint=use_checkpoint,
                                                 use_unet=use_unet,
                                                 analog_bit=analog_bit,
-                                                use_boundary=use_boundary)
+                                                use_boundary=use_boundary,
+                                                use_boundary_attn=use_boundary_attn)

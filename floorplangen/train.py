@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import torch
 
 # 現在のスクリプトのディレクトリを取得
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,7 +34,8 @@ hyperparams = {
     "use_checkpoint": None,
     "use_unet": False,
     "analog_bit": False,
-    "use_boundary": True
+    "use_boundary": True,
+    "use_boundary_attn": False,
 }
 
 logger.configure()
@@ -48,7 +50,8 @@ diffusion, transformer = create_diffusion_and_transformer(in_channels=hyperparam
                                     use_checkpoint=hyperparams["use_checkpoint"],
                                     use_unet=hyperparams["use_unet"],
                                     analog_bit=hyperparams["analog_bit"],
-                                    use_boundary=hyperparams["use_boundary"])
+                                    use_boundary=hyperparams["use_boundary"],
+                                    use_boundary_attn=hyperparams["use_boundary_attn"],)
 logger.log("creating data loader...")
 
 data = load_rplanhg_data(
@@ -58,7 +61,7 @@ data = load_rplanhg_data(
             set_name=hyperparams["set_name"],
         )
 
-logger.log("training...")
+logger.log(f"training...at {dist_util.dev()}")
 transformer.to(dist_util.dev())
 
 TrainLoop(transformer,

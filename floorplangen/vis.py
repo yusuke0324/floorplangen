@@ -4,10 +4,11 @@ import imageio
 import IPython.display as display
 from tqdm import tqdm
 import drawSvg as drawsvg
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import numpy as np
 import cairosvg
 import webcolors
+import matplotlib.pyplot as plt
 
 
 ID_COLOR = {1: '#EE4D4D', 2: '#C67C7B', 3: '#FFD274', 4: '#BEBEBE', 5: '#BFE3E8',
@@ -145,7 +146,10 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13], first_t=971, gif
             # image_with_text = _add_text_to_image(image, f't={t}')
             # image2_with_text = _add_text_to_image(image2, f't={t}')
             # image3_with_text = _add_text_to_image(image3, f't={t}')
-            image_color_with_text = _add_text_to_image(image_color, f't={t}')
+            if sample.shape[0] > 1:
+                image_color_with_text = _add_text_to_image(image_color, f't={t}')
+            else:# ground truthの場合は1枚しかないのでその場合はtextを空欄にする
+                image_color_with_text = _add_text_to_image(image_color, '')
 
             # images.append(image_with_text)
             # images2.append(image2_with_text)
@@ -218,3 +222,63 @@ def save_images(save_dir, images_color, images_color_gt, model_kwargs):
 # Example usage
 # save_dir = 'path_to_save_directory'
 # save_images(save_dir, all_images[-1], all_images_gt[-1], model_kwargs)
+
+def extract_frames_from_gif(gif_path, frame_indices=[0, 9, 19, 29]):
+    """
+    GIFから指定したフレームを抽出します。
+
+    Parameters:
+    - gif_path (str): GIFファイルのパス
+    - frame_indices (list of int): 抽出するフレームのインデックス
+
+    Returns:
+    - frames (list of Image): 抽出したフレームのリスト
+    """
+    gif = Image.open(gif_path)
+    total_frames = gif.n_frames
+    # print(f"Total frames in GIF: {total_frames}")
+    
+    # フレーム数を考慮して、有効なインデックスのみを使用
+    valid_indices = [idx for idx in frame_indices if idx < total_frames]
+    # print(f"Valid frame indices: {valid_indices}")
+
+    frames = [frame.copy() for i, frame in enumerate(ImageSequence.Iterator(gif)) if i in valid_indices]
+    return frames, valid_indices
+
+def display_comparison_image(frames, ground_truth_path, text='', frame_indices=[0, 9, 19, 29]):
+    """
+    4つの時間点の画像とground truthを横に並べて表示します。
+
+    Parameters:
+    - frames (list of Image): 各時間点のフレーム画像
+    - ground_truth_path (str): ground truth画像のファイルパス
+    - frame_indices (list of int): フレームのインデックスリスト
+
+    Usage:
+        folder_name = 'openai_2024_06_26_02_57_22_153429'
+        save_dir = f'/work/floorplangen/ckpts/{folder_name}'
+        gif_path = os.path.join(save_dir, 'gifs', '1194.gif')
+        ground_truth_path = os.path.join(save_dir, 'ground_truth', '1194_gt.png')
+
+        frame_indices = [0, 9, 19, 29]  # 抽出したいフレームのインデックス（GIF内の総フレーム数に基づいて調整）
+        frames, valid_indices = extract_frames_from_gif(gif_path, frame_indices)
+        display_comparison_image(frames, ground_truth_path, valid_indices)
+    """
+    ground_truth = Image.open(ground_truth_path)
+    images = frames + [ground_truth]
+    
+    # matplotlibで画像を表示
+    fig, axes = plt.subplots(1, len(images), figsize=(20, 5))
+    titles = [f"t={971 + (idx)}" for idx in frame_indices] + [f"ground truth {text}"]
+
+    # 画像が一つだけの場合を考慮
+    if len(images) == 1:
+        axes = [axes]
+    
+    for ax, img, title in zip(axes, images, titles):
+        ax.imshow(img)
+        ax.set_title(title)
+        ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
