@@ -146,7 +146,7 @@ def vis_sample(sample, model_kwargs, door_indices=[11, 12, 13], first_t=971, gif
             # image_with_text = _add_text_to_image(image, f't={t}')
             # image2_with_text = _add_text_to_image(image2, f't={t}')
             # image3_with_text = _add_text_to_image(image3, f't={t}')
-            if sample.shape[0] > 1:
+            if sample.shape[0] > 1:     
                 image_color_with_text = _add_text_to_image(image_color, f't={t}')
             else:# ground truthの場合は1枚しかないのでその場合はtextを空欄にする
                 image_color_with_text = _add_text_to_image(image_color, '')
